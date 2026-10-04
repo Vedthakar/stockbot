@@ -1,0 +1,37 @@
+# secrets
+.env
+
+# python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# runtime / control-plane files
+bot.pid
+bot.control
+bot.heartbeat
+bot_state.json
+trainer.pid
+manual_close_*.request
+*.log
+!sample_logs/*.log
+
+# your own trading history (sanitized examples live in sample_logs/)
+trades.csv
+learnings.md
+playbook.md
+replay_learnings.md
+replay_ledger.json
+replay_stats.json
+replay_review.jsonl
+data_cache/
+
+# local tooling
+.claude/
+.cursor/
+.DS_Store
+*.icloud-evicted
+
+# /brag build intermediates (the final brag.mp4 / brag.jpg stay)
+brag-output/work/

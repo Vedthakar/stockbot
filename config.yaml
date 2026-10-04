@@ -1,0 +1,439 @@
+# ============================================================
+# stockbot config — ALL tunable parameters live here.
+# Only YOU edit this file, between runs. The bot (and the LLM
+# judge) only ever READ it. judge.py contains no file-writing
+# code at all, so the judge cannot touch this file.
+#
+# Secrets, account IDs and Alpaca endpoints are NOT in here —
+# they live in .env (see .env.example).
+#
+# PAPER trading is the only default. There is no config switch
+# for live money: it needs `python main.py --live` PLUS a typed
+# confirmation at the terminal.
+# ============================================================
+
+# ---- Strategy on/off switches --------------------------------
+# Each strategy's tuning lives in its own section further down;
+# this block is the single place to turn them on or off.
+strategies:
+  higher_low: true      # long: a higher swing low forms above the prior one
+  support_hold: true    # long: price tests a multi-touch support level and holds
+  # support_break turned off 2026-08-02 after a weak stretch in paper trading
+  # (see sample_logs/). Flip to true to try it.
+  support_break: false  # short: decisive 5m close below support
+  # ob_fvg turned off 2026-08-02: no evidence of edge in paper trading.
+  ob_fvg: false         # long: order block + fair value gap retest
+  opening_scalp: true   # either side: opening-range breakout, then retest
+
+alpaca:
+  # Market data feed. Free paper accounts get "iex". If you have a
+  # market-data subscription you can change this to "sip".
+  # ALPACA_DATA_FEED in .env overrides this.
+  data_feed: iex
+  # Socket timeout for every Alpaca HTTP call. alpaca-py ships no timeout,
+  # so without this a stalled connection blocks the poll loop forever
+  # (2026-08-03: hung 22h mid-tick, which also blocked the next day's start).
+  http_timeout_seconds: 15
+  # Allow fractional-share market orders for longs when one whole
+  # share exceeds the per-trade budget (e.g. SPY). Shorts are always
+  # whole shares; if a short doesn't fit the budget, the bot skips it.
+  allow_fractional: true
+
+# Watchlist universe. The official S&P 100 is the large-cap blue-chip subset
+# of the S&P 500. It contains 100 companies / 101 symbols because both
+# Alphabet share classes are constituents.
+# Comment out tickers_file to fall back to the short inline `tickers` list.
+tickers_file: sp100.txt
+tickers: [AAPL, NVDA, GOOGL, SPY, VOO, AMZN]
+
+trading_window:
+  timezone: America/New_York
+  open: "09:30"        # no entries before this
+  close: "16:00"       # bot stops for the day at this time
+  flatten_at: "15:55"  # force-close any open position at this time
+  # Weekends/holidays: the bot checks the Alpaca market clock and
+  # idles (or exits) if the market is closed.
+
+risk:
+  max_open_positions: 10       # how many positions the bot may hold at once
+                               # (one per ticker). Raise/lower freely.
+  max_per_trade_usd: 12000     # per-trade budget; sized up to this, bounded by
+                               # available buying power. 10 x $12k ~ $120k max
+                               # exposure, within the paper account's margin.
+  daily_loss_limit_usd: 3000   # 3% of the $100k paper account
+  risk_per_trade_usd: 500      # quantity is capped so planned stop risk <= $500
+  # HARD notional ceiling per order, enforced in code independently of
+  # max_per_trade_usd and buying power. Backstop against the 2026-07-20
+  # sizing event (four ~$100k fills): even if max_per_trade_usd is
+  # fat-fingered, no single order may exceed this.
+  max_notional_per_trade_usd: 15000
+  fill_risk_buffer_pct: 5
+  max_trades_per_day: 0       # 0 = unlimited; other risk/context gates still apply
+  max_positions_per_sector: 3
+  max_net_positions_one_direction: 7
+  max_portfolio_stop_risk_usd: 2500
+  max_gross_exposure_usd: 100000
+  sectors_file: sectors.csv
+  max_holding_minutes: 120
+  close_untracked_positions_on_startup: true
+
+# Quick intraday stops still sit outside structure, but must not be inside
+# ordinary noise. Trades without structure in this compact range are skipped.
+stops:
+  atr_period: 14
+  atr_mult: 0.5
+  min_stop_pct: 0.10
+
+# Completed 5-minute structure used to place both sides of each bracket.
+# Stops sit beyond the nearest valid support/resistance zone. Targets front-run
+# the nearest opposing zone. No valid stop, or reward blocked below 1.5R, skips.
+structure:
+  swing_strength: 2
+  cluster_pct: 0.20
+  stop_buffer_pct: 0.12
+  stop_buffer_atr_mult: 0.05
+  # Hard quick-trade ceilings: the tighter of ATR and percentage wins.
+  # Sized from the measured distribution of strategy-defining stop distances
+  # (median ~0.44% / 1.95 ATR, p75 ~0.58% / 2.6 ATR on S&P 100 replays).
+  # The previous 1.0 ATR / 0.35% ceiling sat below the 25th percentile and
+  # rejected virtually every setup, live and in replay.
+  max_stop_atr_mult: 2.5
+  max_stop_pct: 0.80
+  # Strategies that mark their own structural level and set the stop just
+  # beyond it. For these, that level IS the structure being traded, so the
+  # stop is clamped into the [min, max] risk band instead of searching for a
+  # different zone past it.
+  #
+  # DEFAULT OFF, deliberately: in the author's own replay testing, turning it
+  # on admitted many more opening_scalp trades and they did worse, not better.
+  # Re-run backtest.py before enabling. Set to [opening_scalp] to enable.
+  strategies_define_own_stop: []
+  target_front_run_pct: 0.05
+  max_target_atr_mult: 3.75
+  max_target_pct: 1.60
+
+# Deterministic same-symbol memory. These gates run before the LLM judge.
+entry_guards:
+  symbol_cooldown_min: 15
+  no_flip_min: 30
+  max_combo_losses_per_day: 2
+  judge_history_minutes: 60
+
+# Cap how many NEW entries the bot opens in a single poll, so one tick can't
+# fire off dozens of orders at once. It picks up more on the next tick.
+max_entries_per_tick: 3
+# Cap how many candidates get sent to the judge per poll (each judge call is
+# ~0.7s). Bounds tick time across a big universe; the rest wait for next tick.
+max_judge_calls_per_tick: 6
+
+# How the take-profit (TP) and stop-loss (SL) are enforced on each trade.
+orders:
+  # Place a REAL Alpaca bracket order on entry: a stop-loss stop order +
+  # a take-profit limit order live at the broker, so they trigger even if
+  # this bot (or your computer) is off. Requires whole shares — always true
+  # at the current $100k budget. If a bracket can't be placed, the bot
+  # falls back to software-only monitoring for that trade.
+  use_bracket_orders: true
+  # ALSO keep the software monitor running as a backup layer (the "both"
+  # setup): it reconciles with the broker every few seconds, force-closes
+  # at end-of-day, and emergency-closes if price runs past the stop by the
+  # margin below (i.e. the broker stop somehow didn't fire). It does NOT
+  # pre-empt the broker's take-profit limit — that limit is left to fill
+  # at its better whole-dollar price.
+  software_backup: true
+  software_stop_margin_pct: 0.20   # emergency software close this % beyond stop
+  # "structure" aims just before the nearest opposing support/resistance zone.
+  # "price_grid" remains available as the legacy whole-dollar target mode.
+  target_mode: structure
+  round_take_profit_to_whole: false
+  target_rr: 1.5
+  # 1.2 admits the nearer structure targets that price actually reaches
+  # intraday; a higher minimum filters out most structure-based setups.
+  min_reward_risk: 1.2
+  max_reward_risk: 2.0
+  # Active manager: move the broker stop to entry at +1R, then trail winners
+  # from their peak. Once a trade has reached giveback_trigger_r, it exits
+  # when it retraces trail_distance_r (in R) from its best favorable
+  # excursion — a fixed-distance trail from the peak, not a fraction of it.
+  # (The legacy giveback_fraction rule gives back a fixed share of every
+  # winner; a fixed-distance trail gives back less on trades that run.)
+  breakeven_trigger_r: 1.0
+  giveback_trigger_r: 1.0
+  trail_distance_r: 0.50
+  # Legacy fraction rule — only used if trail_distance_r is removed/blank.
+  giveback_fraction: 0.50
+  partial_at_r: 1.0
+  partial_fraction: 0.50
+  enable_partial_exit: true
+
+# How often the main loop runs: fetch bars for the S&P 100, manage all open
+# positions, then scan for new setups. Real-time stop/target exits are handled
+# by broker bracket orders, not this loop.
+poll_interval_seconds: 5
+
+# How often (seconds) to print the PORTFOLIO heartbeat (all open positions +
+# unrealized P&L). Reconciliation with the broker runs every tick regardless.
+heartbeat_seconds: 20
+
+strategy_1_opening_scalp:
+  # on/off: strategies.opening_scalp at the top of this file
+  # No NEW Strategy-1 entries after this time (ET).
+  entry_cutoff: "11:00"
+  reward_risk: 2.0
+  # Stop is placed this % beyond the marked level (e.g. 0.05 = 0.05%
+  # below the retested high for a long). Keeps the stop "just below"
+  # the level instead of exactly on it.
+  stop_buffer_pct: 0.05
+  # A 1m retest candle must come within this % of the broken level
+  # to count as a retest (it must touch/approach the level, then
+  # close on the right side of it).
+  retest_tolerance_pct: 0.05
+  # How long after the 5m breakout candle a valid retest may still arrive.
+  # Past this the break is stale and that direction is abandoned.
+  max_retest_minutes: 30
+  atr_period: 14
+  min_range_atr_mult: 2.0
+  max_range_atr_mult: 15.0
+  volume_lookback: 3
+  volume_factor: 1.5
+
+strategy_2_ob_fvg:
+  # on/off: strategies.ob_fvg at the top of this file
+  reward_risk: 2.0   # was 3.0; set to 2:1 to match all other strategies
+  # Works on 5-minute candles. An "impulsive move" is a candle whose
+  # body is at least this multiple of the average body of the
+  # preceding lookback candles.
+  impulse_body_factor: 2.0
+  impulse_lookback: 10
+  atr_period: 14
+  impulse_atr_mult: 0.8
+  volume_lookback: 3
+  volume_factor: 1.5
+  min_fvg_pct: 0.05
+  max_ob_age_bars: 6
+  # Price must be within this % of the order-block midpoint to count
+  # as "touching the middle" of the block.
+  ob_touch_tolerance_pct: 0.10
+  # Stop buffer below the order-block low, in %.
+  stop_buffer_pct: 0.05
+  # Only patterns formed today (intraday) are considered.
+
+strategy_3_support:
+  # Shared tuning for support_hold, support_break and higher_low.
+  # on/off: the `strategies:` block at the top of this file.
+  reward_risk: 2.0
+  # Swing lows are detected on 5-minute candles: a bar whose low is
+  # lower than `swing_strength` bars on each side.
+  swing_strength: 2
+  # 3a: price counts as "at support" when within this % of the level.
+  support_touch_tolerance_pct: 0.15
+  # 3b: a close this % below support counts as a "decisive" break.
+  break_threshold_pct: 0.10
+  # Stop buffer beyond the level, in %.
+  stop_buffer_pct: 0.10
+  level_cluster_pct: 0.20
+  min_support_touches: 2
+  consolidation_bars: 3
+  consolidation_pct: 0.30
+  volume_lookback: 3
+  volume_factor: 1.5
+
+# Shared deterministic gates applied after a strategy fires and before the
+# LLM judge. Percent values are percentage points (0.05 means 0.05%).
+context_filters:
+  enabled: true
+  atr_period: 14
+  min_atr_pct: 0.15
+  max_atr_pct: 5.0
+  volume_lookback: 20
+  relative_strength_threshold_pct: 0.0
+  max_spread_pct: 0.05
+  max_quote_age_seconds: 30
+  # The gate uses the TIGHTEST spread sampled for a symbol within this window
+  # rather than the instantaneous one. On the free IEX feed a single sample
+  # regularly catches a one-sided book and reports an impossible spread
+  # (6-11% on MA/GS/AMGN, whose real NBBO is ~0.01%). Gating only, never
+  # pricing. Set to 0 to gate on the instantaneous sample instead.
+  # Raised 30 -> 180 (2026-08-02): the 30s window was the main reason no
+  # trade fired before ~11:00. In the first 90 minutes the IEX top-of-book
+  # is one-sided so often that even the tightest of ~6 samples exceeded
+  # 0.05% on S&P-100 names whose true NBBO is a few bps; with 180s the
+  # gate catches a real two-sided moment. Gating only, so a slightly
+  # stale tightest-sample is acceptable.
+  spread_sample_window_seconds: 180
+  # Require the target to clear this multiple of the spread, so the expected
+  # move is big enough to pay for crossing the book twice. This is the safe
+  # way to lower min_atr_pct: it admits calm-but-tight names (CSCO, 0.02%
+  # spread) while still rejecting moves too small to cover costs.
+  # 0 = disabled. Try 8-10 if you lower the ATR floor.
+  min_target_spread_mult: 0.0
+  max_post_approval_drift_pct: 0.10
+  earnings_blacklist_file: earnings_blacklist.txt
+  no_trade_windows: []
+  regime:
+    ema_period: 20
+    ema_slope_bars: 3
+    ema_slope_threshold_pct: 0.03
+    # An EMA(20)+3 needs 23 one-minute bars, so before this the regime is
+    # "unknown" — which blocks EVERY strategy until 09:53 and silently eats
+    # the first 23 minutes of the morning window. This shorter EMA is used
+    # only until the full one warms up: 9 -> classifiable at 09:42, 5 ->
+    # 09:38. Lower is earlier but noisier. 0 disables (old behaviour).
+    opening_ema_period: 9
+
+  # Per-strategy context-gate overrides. Anything unset falls back to the
+  # shared value above; an explicit `null` disables that gate for the
+  # strategy. Lets one strategy be tuned in without loosening the others.
+  strategy_overrides: {}
+    # DO NOT re-add the opening_scalp override below without re-running the
+    # backtest. It was tried on 2026-07-21 and did worse in replay testing.
+    #
+    # opening_scalp:
+    #   min_atr_pct: 0.05
+    #   relative_strength_threshold_pct: null   # <- this was the damage
+    #
+    # The reasoning ("a breakout already proves strength, so the
+    # relative-strength screen is redundant") was wrong: that screen was
+    # doing real work filtering weak longs. The ATR floor was near-harmless
+    # (it rejected only 2 of 435 signals) but also bought nothing.
+  blocked_regimes:
+    opening_scalp:
+      long: [trend_down]
+      short: [trend_up]
+    ob_fvg:
+      long: [trend_down]
+    support_break:
+      short: [trend_up]
+    support_hold:
+      long: [trend_down]
+    higher_low:
+      long: [trend_down]
+
+# Offline replay training ("night school", trainer.py). Runs ONLY while the
+# market is closed: replays historical sessions with the production detectors,
+# quizzes the LLM judge on each setup (predict WIN/LOSS before the outcome is
+# revealed), writes lessons for wrong predictions, and distills per-bucket
+# statistics into playbook.md — which the live judge reads before approving
+# real entries. It never touches config.yaml, learnings.md, or trades.csv.
+offline_training:
+  enabled: true
+  # How far back study material may come from. IEX minute-bar history and the
+  # survivorship caveat in TRADING_STRATEGY.md both argue for staying recent.
+  lookback_days: 120
+  # Work per study cycle. One cycle = days_per_cycle random past days, each
+  # scanned across symbols_per_cycle random unstudied universe symbols.
+  # Every qualifying setup in a session is studied (scanning resumes after
+  # each simulated trade exits + the live symbol cooldown), not just the
+  # first of the day.
+  days_per_cycle: 6
+  symbols_per_cycle: 50
+  # LLM budget per cycle (Groq rate limits + cost control). Setups beyond the
+  # prediction cap still count toward playbook statistics.
+  max_predictions_per_cycle: 40
+  # EVERY graded prediction (correct or wrong) writes a lesson — why the call
+  # was made, why the reasoning held or failed, what to keep in mind — so this
+  # should match max_predictions_per_cycle. Each lesson is one extra LLM call.
+  max_lessons_per_cycle: 40
+  # The most recent N lessons are shown to the judge with every quiz question
+  # so it learns from its own graded track record.
+  lessons_in_prompt: 10
+  # replay_learnings.md is trimmed to the most recent N lesson entries.
+  lessons_keep: 500
+  # Night school quizzes with its own (cheaper, higher-quota) model so
+  # overnight training never burns the live judge's Groq quota. Leave blank
+  # to reuse judge.model.
+  judge_model: llama-3.1-8b-instant
+  # Spacing between quiz calls. Groq free-tier TPM is the binding limit.
+  # Every graded setup is now 2 calls (prediction + lesson) and predictions
+  # carry ~10 recent lessons of context, so keep this at 7s+ to stay under it.
+  llm_seconds_between_calls: 7
+  # After this many consecutive setups lost to 429 (despite escalating
+  # backoff), skip the quiz for the rest of the cycle — the daily quota is
+  # gone and replays alone still feed the playbook.
+  max_consecutive_rate_limits: 3
+  # Playbook qualification: a strategy/direction/regime/time-bucket combo needs
+  # at least min_bucket_n replayed setups before it can produce a line.
+  # Expectancy <= warn_expectancy_r => AVOID; >= edge_expectancy_r => EDGE.
+  min_bucket_n: 20
+  warn_expectancy_r: -0.05
+  edge_expectancy_r: 0.20
+  # Session limits: stop after max_run_hours, and always stop this many
+  # minutes before the next market open so the live bot starts clean.
+  max_run_hours: 4
+  stop_before_open_minutes: 15
+  # Most recent replayed setups kept for the dashboard's Night School page
+  # (each record includes the full session chart).
+  review_keep: 300
+
+backtest:
+  slippage_pct: 0.02
+  assumed_spread_pct: 0.03
+  initial_capital: 100000
+  bootstrap_samples: 2000
+  acceptance:
+    min_trades_per_strategy: 200
+    min_expectancy_r: 0.0
+    min_ci95_low_r: 0.0
+    max_drawdown_r: 20.0
+
+# Strategy 4 — configurable price-level alerts ("Robinhood-style").
+# Leave empty unless you explicitly want a level watched. Example:
+#   - {ticker: NVDA, price: 95.00, direction: long}
+# direction is "long" or "short". Triggered levels still pass the
+# conflict check and the LM Studio veto like any other signal.
+price_levels: []
+price_level_settings:
+  reward_risk: 2.0
+  # Stop distance for level entries, % from the level.
+  stop_pct: 0.50
+  # Price must come within this % of the level to trigger.
+  trigger_tolerance_pct: 0.05
+
+judge:
+  # The LLM veto gate. OPTIONAL: set enabled: false (or run
+  # `python main.py --no-judge`) and the rules engine trades alone.
+  enabled: true
+  #
+  # Any OpenAI-compatible chat endpoint works. Two tested setups:
+  #
+  # 1) Local LM Studio (default — no key, nothing leaves your machine).
+  #    Load a model in LM Studio, then Developer tab -> Start Server.
+  #    A small model like Qwen3-4B can take tens of seconds per veto;
+  #    bigger/faster hardware helps. timeout_seconds bounds the wait.
+  #
+  # 2) Groq (hosted, ~1s per veto). Put GROQ_API_KEY in .env, then:
+  #    base_url: https://api.groq.com/openai/v1
+  #    model:    llama-3.3-70b-versatile
+  #    api_key_env: GROQ_API_KEY
+  base_url: "http://localhost:1234/v1"
+  model: "qwen/qwen3-4b-2507"
+  api_key_env: ""        # blank -> no auth header sent (LM Studio)
+  timeout_seconds: 60
+  temperature: 0.0
+  max_tokens: 1024
+  # While enabled: if the judge is unreachable or answers anything but
+  # a clean YES, the trade is SKIPPED. There is deliberately no
+  # "fail open" option — turning the judge off is an explicit choice.
+
+# TradingView-style trade bell. Played through macOS `afplay` whenever the
+# bot fills an order. Any .aiff/.wav/.mp3 path works — the defaults are the
+# built-in macOS alert sounds in /System/Library/Sounds. Set a key to an
+# empty value ("") to silence just that event, or enabled: false for all.
+sounds:
+  enabled: true
+  volume: 1.0                                    # 0.0–1.0 (afplay also allows >1 to boost)
+  entry: /System/Library/Sounds/Hero.aiff        # position opened (buy or short)
+  exit_win: /System/Library/Sounds/Glass.aiff    # position closed at a profit
+  exit_loss: /System/Library/Sounds/Basso.aiff   # position closed at a loss
+  partial: /System/Library/Sounds/Tink.aiff      # partial profit-take fill
+
+files:
+  learnings: learnings.md
+  trades_csv: trades.csv
+  # Offline-training artifacts (trainer.py). The playbook is the only one the
+  # live bot reads; lessons/stats/ledger belong to the trainer.
+  playbook: playbook.md
+  replay_learnings: replay_learnings.md
+  replay_stats: replay_stats.json
+  replay_ledger: replay_ledger.json
+  replay_review: replay_review.jsonl

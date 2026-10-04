@@ -1,0 +1,2 @@
+# Add one ticker per line before a session when it has earnings or material
+# company-specific news. Keep this file empty (comments are ignored) otherwise.

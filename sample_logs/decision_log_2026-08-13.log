@@ -1,0 +1,50 @@
+# stockbot — PAPER trading decision log, session of 2026-08-13 (Alpaca paper account)
+# Unedited lines from bot.log, filtered to decisions. Repeated identical SKIP
+# lines and the process id were removed; no account identifiers appear here.
+# CANDIDATE = rules engine found a setup   SKIP = blocked by a deterministic gate
+# APPROVED / VETO = the LLM judge's verdict  ENTERED / CLOSED = paper fills
+[09:25:09] stockbot starting — mode=PAPER universe=101 tickers poll=5s
+[09:25:09] judge: llama-3.3-70b-versatile @ https://api.groq.com/openai/v1
+[10:28:16] CANDIDATE MSFT opening_scalp long entry~498.96 SL 497.83 TP 500.70 -> asking judge
+[10:28:17] APPROVED by judge: All checks pass with the provided trade summary and learnings.
+[10:28:24] ENTERED LONG 24 MSFT @ 498.99 (SL 497.83 / TP 500.70) [broker bracket + software backup]  [1/10 positions]
+[10:40:09] CLOSED MSFT @ 498.64  P&L $-8.38  (day total $-8.38, 0 open)
+[10:43:35] CANDIDATE NVDA support_hold long entry~225.70 SL 225.28 TP 226.30 -> asking judge
+[10:43:36] APPROVED by judge: All checks pass with the given trade details.
+[10:43:39] ENTERED LONG 53 NVDA @ 225.68 (SL 225.28 / TP 226.30) [broker bracket + software backup]  [1/10 positions]
+[10:45:07] SKIP NFLX support_hold: target is outside quick-trade cap or below minimum reward:risk
+[10:46:52] CLOSED NVDA @ 225.18  P&L $-26.49  (day total $-34.87, 0 open)
+[11:00:07] SKIP BMY support_hold: target is outside quick-trade cap or below minimum reward:risk
+[11:00:08] CANDIDATE KO higher_low long entry~87.69 SL 87.43 TP 88.09 -> asking judge
+[11:00:09] APPROVED by judge: All checks pass with the given trade summary and learnings.
+[11:00:11] ENTERED LONG 136 KO @ 87.70 (SL 87.43 / TP 88.09) [broker bracket + software backup]  [1/10 positions]
+[11:20:09] CLOSED KO @ 87.46  P&L $-32.64  (day total $-67.51, 0 open)
+[11:30:49] SKIP CVX higher_low: target is outside quick-trade cap or below minimum reward:risk
+[12:15:10] SKIP MO support_hold: target is outside quick-trade cap or below minimum reward:risk
+[12:16:21] SKIP NKE support_hold: target is outside quick-trade cap or below minimum reward:risk
+[12:20:11] CANDIDATE MDLZ support_hold long entry~63.34 SL 63.16 TP 63.60 -> asking judge
+[12:20:12] VETO MDLZ support_hold: AVOID line in replay playbook matches trade details.
+[12:20:13] SKIP TSLA higher_low: target is outside quick-trade cap or below minimum reward:risk
+[12:23:44] SKIP MDLZ support_hold: target is outside quick-trade cap or below minimum reward:risk
+[12:26:05] SKIP NFLX higher_low: target is outside quick-trade cap or below minimum reward:risk
+[12:30:33] SKIP PLTR higher_low: target is outside quick-trade cap or below minimum reward:risk
+[12:50:45] SKIP CMCSA higher_low: target is outside quick-trade cap or below minimum reward:risk
+[12:55:03] SKIP PFE support_hold: target is outside quick-trade cap or below minimum reward:risk
+[12:56:20] SKIP ORCL higher_low: target is outside quick-trade cap or below minimum reward:risk
+[13:10:09] SKIP PLTR support_hold: target is outside quick-trade cap or below minimum reward:risk
+[13:24:31] CANDIDATE NKE support_hold long entry~41.09 SL 40.91 TP 41.37 -> asking judge
+[13:24:32] VETO NKE support_hold: AVOID line in REPLAY PLAYBOOK matches trade details.
+[13:43:59] SKIP AMD higher_low: target is outside quick-trade cap or below minimum reward:risk
+[13:56:30] CANDIDATE CVX support_hold long entry~197.52 SL 196.77 TP 198.64 -> asking judge
+[13:56:31] VETO CVX support_hold: AVOID line in replay playbook matches trade details.
+[13:57:52] SKIP CVX support_hold: target is outside quick-trade cap or below minimum reward:risk
+[14:35:10] SKIP INTC higher_low: target is outside quick-trade cap or below minimum reward:risk
+[14:50:18] SKIP INTC support_hold: target is outside quick-trade cap or below minimum reward:risk
+[15:25:13] SKIP XOM support_hold: target is outside quick-trade cap or below minimum reward:risk
+[15:33:19] CANDIDATE ORCL higher_low long entry~156.08 SL 155.25 TP 157.22 -> asking judge
+[15:33:21] VETO ORCL higher_low: Matching AVOID line in replay playbook for this strategy and market conditions.
+[15:35:05] CANDIDATE PLTR higher_low long entry~179.28 SL 178.25 TP 180.84 -> asking judge
+[15:35:06] VETO PLTR higher_low: Proposed trade matches a failing AVOID line in the replay playbook.
+[15:35:56] SKIP MSFT higher_low: target is outside quick-trade cap or below minimum reward:risk
+[15:48:54] SKIP META support_hold: target is outside quick-trade cap or below minimum reward:risk
+[16:00:06] session done. realized P&L today: $-67.51

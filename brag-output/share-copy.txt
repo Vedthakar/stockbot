@@ -1,0 +1,1 @@
+A rules engine finds the setup. A local LLM gets veto power. It can't invent a trade or override a risk gate; it can only say no, and every yes and no is logged with the reason. Every trade gets a post-mortem, and a night-school replay turns losing patterns into vetoes. Paper trading by default, MIT, not financial advice.
